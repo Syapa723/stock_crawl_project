@@ -1,86 +1,187 @@
-{% load humanize %} <!DOCTYPE html>
-<html>
+<!DOCTYPE html>
+<html lang="ko">
 <head>
-    <title>{{ stock.name }} 상세 시세</title>
+    <meta charset="UTF-8">
+    <title>{{ stock.name }} 상세 정보</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
-        /* 차트 크기 조절을 위한 컨테이너 스타일 */
-        .chart-container {
-            width: 80%;
-            margin: 20px auto;
+        /* [다크 모드 스타일 정의] */
+        :root {
+            --bg-color: #1e1e1e;       /* 전체 배경 (진한 회색) */
+            --card-bg: #2d2d2d;        /* 박스 배경 (약간 밝은 회색) */
+            --text-main: #e0e0e0;      /* 메인 글자 (흰색에 가까운 회색) */
+            --text-sub: #b0b0b0;       /* 보조 글자 (회색) */
+            --accent: #bb86fc;         /* 강조색 (연한 보라) */
+            --border: #444444;         /* 테두리 색 */
+            --table-head: #333333;     /* 표 헤더 배경 */
         }
-        table { width: 100%; border-collapse: collapse; margin-top: 20px;}
-        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
-        th { background-color: #f4f4f4; }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Noto Sans KR', sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+
+        h1, h2, h3 { color: var(--text-main); }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { text-decoration: underline; }
+
+        /* 버튼 스타일 */
+        .btn-ai {
+            background-color: #6200ea;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 16px;
+            transition: background 0.3s;
+        }
+        .btn-ai:hover { background-color: #3700b3; }
+
+        /* 컨테이너 박스들 (AI 결과창 등) */
+        .box-container {
+            background-color: var(--card-bg);
+            padding: 20px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            margin: 20px 0;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+
+        /* 테이블 스타일 */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        th, td {
+            padding: 12px;
+            text-align: right; /* 숫자는 우측 정렬 */
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            background-color: var(--table-head);
+            color: var(--accent);
+            text-align: center;
+        }
+        tr:hover { background-color: #383838; }
+
+        /* 차트 컨테이너 */
+        .chart-container {
+            position: relative;
+            height: 40vh;
+            width: 100%;
+            background-color: var(--card-bg);
+            padding: 15px;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+        }
     </style>
 </head>
 <body>
-    <h1>{{ stock.name }} ({{ stock.code }}) 주가 차트</h1>
 
-<div style="display: flex; gap: 10px; align-items: center;">
-    <a href="{% url 'stocks:stock_list' %}">목록으로 돌아가기</a>
+    <div style="max-width: 1000px; margin: 0 auto;">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h1>📈 {{ stock.name }} <span style="font-size: 0.6em; color: var(--text-sub);">({{ stock.code }})</span></h1>
+            <a href="/stocks/" style="padding: 8px 16px; background: var(--card-bg); border-radius: 5px; border: 1px solid var(--border);">
+                ⬅️ 목록으로
+            </a>
+        </div>
 
-    <form action="{% url 'stocks:stock_update' stock.code %}" method="post">
-        {% csrf_token %}
-        <button type="submit" style="padding: 5px 10px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 4px;">
-            최신 데이터 업데이트 ↻
-        </button>
-    </form>
-</div>
+        <div class="chart-container">
+            <canvas id="myChart"></canvas>
+        </div>
 
-    <div class="chart-container">
-        <canvas id="myChart"></canvas>
+        <div class="box-container">
+            <h3 style="margin-top: 0; display: flex; align-items: center; gap: 10px;">
+                🤖 Gemini AI 투자 분석
+            </h3>
+
+            {% if ai_result %}
+                <div style="line-height: 1.8; white-space: pre-wrap; color: var(--text-main);">{{ ai_result }}</div>
+                <div style="margin-top: 15px; text-align: right;">
+                    <a href="." style="font-size: 0.9em; color: var(--text-sub);">[결과 지우기]</a>
+                </div>
+            {% else %}
+                <p style="color: var(--text-sub);">최근 30일 주가 데이터를 기반으로 AI가 차트를 분석해드립니다.</p>
+                <form method="post">
+                    {% csrf_token %}
+                    <button type="submit" name="analyze" value="true" class="btn-ai">
+                        ✨ AI 분석 실행하기
+                    </button>
+                </form>
+            {% endif %}
+        </div>
+
+        <h3>📊 일별 시세 (최근 30일)</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>날짜</th>
+                    <th>종가</th>
+                    <th>전일비</th>
+                    <th>시가</th>
+                    <th>고가</th>
+                    <th>저가</th>
+                    <th>거래량</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for price in prices %}
+                <tr>
+                    <td style="text-align: center;">{{ price.date|date:"Y-m-d" }}</td>
+                    <td style="font-weight: bold; color: #ff8a80;">{{ price.close_price|floatformat:0 }}</td>
+                    <td>-</td>
+                    <td>{{ price.open_price }}</td>
+                    <td>{{ price.high_price }}</td>
+                    <td>{{ price.low_price }}</td>
+                    <td>{{ price.volume }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
     </div>
 
-    <hr>
-
-    <h3>일별 시세표</h3>
-    <table>
-        <thead>
-            <tr>
-                <th>날짜</th>
-                <th>종가</th>
-                <th>시가</th>
-                <th>고가</th>
-                <th>저가</th>
-                <th>거래량</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for price in prices reversed %}
-            <tr>
-                <td>{{ price.date }}</td>
-                <td>{{ price.close_price|intcomma }}</td>
-                <td>{{ price.open_price|intcomma }}</td>
-                <td>{{ price.high_price|intcomma }}</td>
-                <td>{{ price.low_price|intcomma }}</td>
-                <td>{{ price.volume|intcomma }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-
     <script>
-        const ctx = document.getElementById('myChart');
-
-        new Chart(ctx, {
-            type: 'line',  // 선 그래프
+        const ctx = document.getElementById('myChart').getContext('2d');
+        const myChart = new Chart(ctx, {
+            type: 'line',
             data: {
-                // Django에서 넘겨준 리스트를 자바스크립트 변수로 변환 (|safe 필터 필수)
                 labels: {{ date_list|safe }},
                 datasets: [{
-                    label: '종가 (Close Price)',
+                    label: '종가 (Close)',
                     data: {{ price_list|safe }},
+                    borderColor: '#bb86fc', // 그래프 선 색상 (보라색)
+                    backgroundColor: 'rgba(187, 134, 252, 0.1)',
                     borderWidth: 2,
-                    borderColor: 'rgb(75, 192, 192)', // 선 색상 (청록색)
-                    tension: 0.1 // 선을 약간 부드럽게
+                    pointRadius: 2,
+                    tension: 0.1,
+                    fill: true
                 }]
             },
             options: {
                 responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        labels: { color: '#e0e0e0' } // 범례 글자색
+                    }
+                },
                 scales: {
+                    x: {
+                        ticks: { color: '#b0b0b0' }, // X축 글자색
+                        grid: { color: '#444' }      // X축 격자색
+                    },
                     y: {
-                        beginAtZero: false // 주가는 0부터 시작하지 않으므로 false
+                        ticks: { color: '#b0b0b0' }, // Y축 글자색
+                        grid: { color: '#444' }      // Y축 격자색
                     }
                 }
             }
