@@ -121,3 +121,5 @@ USE_TZ = True
 # https://docs.djangoproject.com/en/6.0/howto/static-files/
 
 STATIC_URL = 'static/'
+
+GEMINI_API_KEY = "AIzaSyBZEw5_TDI9a8otjaDCv1jMRJSIC2hPjKg"

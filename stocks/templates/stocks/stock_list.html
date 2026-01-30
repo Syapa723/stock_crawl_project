@@ -1,16 +1,131 @@
 <!DOCTYPE html>
-<html>
+<html lang="ko">
 <head>
-    <title>주식 크롤러 - 종목 리스트</title>
+    <meta charset="UTF-8">
+    <title>주식 종목 리스트</title>
+    <style>
+        :root {
+            --bg-color: #1e1e1e;       /* 배경색 */
+            --card-bg: #2d2d2d;        /* 카드 배경 */
+            --text-main: #e0e0e0;      /* 메인 텍스트 */
+            --text-sub: #a0a0a0;       /* 보조 텍스트 */
+            --accent: #bb86fc;         /* 강조색 (보라) */
+            --hover-bg: #383838;       /* 마우스 올렸을 때 */
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            font-family: 'Noto Sans KR', sans-serif;
+            margin: 0;
+            padding: 20px;
+        }
+
+        /* 중앙 정렬 컨테이너 */
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        /* 헤더 스타일 */
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+            border-bottom: 1px solid #444;
+            padding-bottom: 20px;
+        }
+
+        h1 { margin: 0; font-size: 24px; }
+
+        .count-badge {
+            background-color: var(--accent);
+            color: black;
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-size: 14px;
+            font-weight: bold;
+            vertical-align: middle;
+            margin-left: 10px;
+        }
+
+        /* 그리드 레이아웃 (반응형 카드) */
+        .stock-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            padding: 0;
+            list-style: none;
+        }
+
+        /* 개별 카드 스타일 */
+        .stock-card {
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            transition: transform 0.2s, background-color 0.2s;
+            overflow: hidden;
+        }
+
+        .stock-card:hover {
+            transform: translateY(-5px);
+            background-color: var(--hover-bg);
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+
+        .stock-link {
+            display: block;
+            padding: 20px;
+            text-decoration: none;
+            color: var(--text-main);
+        }
+
+        .stock-name {
+            display: block;
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+
+        .stock-code {
+            display: block;
+            font-size: 14px;
+            color: var(--text-sub);
+        }
+
+        /* 데이터 없음 메시지 */
+        .empty-msg {
+            text-align: center;
+            padding: 50px;
+            color: var(--text-sub);
+            grid-column: 1 / -1; /* 전체 너비 차지 */
+        }
+    </style>
 </head>
 <body>
-    <h1>수집된 종목 리스트</h1>
-    <ul>
-        {% for stock in stocks %}
-            <li><a href="{% url 'stocks:stock_detail' stock.code %}">{{ stock.name }} ({{ stock.code }})</a></li>
-        {% empty %}
-            <li>수집된 종목이 없습니다.</li>
-        {% endfor %}
-    </ul>
+    <div class="container">
+        <header>
+            <h1>
+                📈 수집된 종목 리스트
+                <span class="count-badge">{{ stocks|length }}</span>
+            </h1>
+        </header>
+
+        <ul class="stock-grid">
+            {% for stock in stocks %}
+                <li class="stock-card">
+                    <a href="{% url 'stocks:stock_detail' stock.code %}" class="stock-link">
+                        <span class="stock-name">{{ stock.name }}</span>
+                        <span class="stock-code">{{ stock.code }}</span>
+                    </a>
+                </li>
+            {% empty %}
+                <li class="empty-msg">
+                    <h3>수집된 종목이 없습니다.</h3>
+                    <p>터미널에서 'python manage.py init_stocks'를 실행해주세요.</p>
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
 </body>
 </html>

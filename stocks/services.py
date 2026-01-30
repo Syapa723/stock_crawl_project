@@ -1,4 +1,3 @@
-# stocks/services.py
 import requests
 import pandas as pd
 from io import StringIO
@@ -9,63 +8,66 @@ from .models import Stock, DailyPrice
 def fetch_and_save_stock_data(stock_code):
     """
     네이버 증권에서 특정 종목의 일별 시세를 가져와 DB에 저장하는 서비스 함수
+    (최근 4페이지, 약 40일치 데이터 수집)
     """
-    # 1. 종목 객체 가져오기 또는 생성
-    stock, created = Stock.objects.get_or_create(
-        code=stock_code,
-        defaults={'name': f'Stock_{stock_code}'}
-    )
-
-    url = f"https://finance.naver.com/item/sise_day.nhn?code={stock_code}"
     headers = {'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)'}
 
-    # 2. 네이버 서버에 요청 (1페이지 데이터)
     try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status()
+        # 1. 종목 객체 가져오기 (없으면 생성하지만, 보통 init_stocks로 생성됨)
+        stock, created = Stock.objects.get_or_create(code=stock_code)
 
+        # 2. 최신 종목명 업데이트 (메인 페이지 접속)
+        #    이 부분은 생략해도 되지만, 종목명이 바뀌는 경우를 대비해 유지합니다.
         main_url = f"https://finance.naver.com/item/main.nhn?code={stock_code}"
         main_response = requests.get(main_url, headers=headers)
-        soup = BeautifulSoup(main_response.text, 'html.parser')
+        if main_response.status_code == 200:
+            soup = BeautifulSoup(main_response.text, 'html.parser')
+            name_tag = soup.select_one('.wrap_company h2 a')
+            if name_tag:
+                stock_name = name_tag.text
+                if stock.name != stock_name:
+                    stock.name = stock_name
+                    stock.save()
 
-        # 네이버 금융 메인 페이지에서 종목명 태그 찾기
-        name_tag = soup.select_one('.wrap_company h2 a')
-        stock_name = name_tag.text if name_tag else f"Stock_{stock_code}"
+        # 3. 페이지 순회하며 데이터 수집 (1페이지 ~ 4페이지 -> 약 40일치)
+        total_saved_count = 0
 
-        # [3] Stock 모델 업데이트 (get_or_create -> update_or_create로 변경하거나 이름 업데이트)
-        stock, created = Stock.objects.get_or_create(code=stock_code)
-        # 이미 존재하더라도 진짜 종목명으로 업데이트
-        if stock.name != stock_name:
-            stock.name = stock_name
-            stock.save()
+        for page in range(1, 5):
+            url = f"https://finance.naver.com/item/sise_day.nhn?code={stock_code}&page={page}"
+            response = requests.get(url, headers=headers)
+            response.raise_for_status()
 
-        df_list = pd.read_html(StringIO(response.text), encoding='cp949')
-        if not df_list:
-            return 0
+            # pandas로 테이블 읽기
+            df_list = pd.read_html(StringIO(response.text), encoding='cp949')
+            if not df_list:
+                continue
 
-        df = df_list[0].dropna()
+            # 결측치 제거
+            df = df_list[0].dropna()
 
-        saved_count = 0
-        # 3. 데이터프레임 순회하며 DB 저장
-        for _, row in df.iterrows():
-            # 날짜 형식 처리 (2024.01.30 -> 2024-01-30)
-            date_str = row['날짜'].replace('.', '-')
+            # 데이터프레임 순회하며 DB 저장
+            for _, row in df.iterrows():
+                # 날짜 형식 처리 (2024.01.30 -> 2024-01-
+                date_str = row['날짜'].replace('.', '-')
 
-            _, created = DailyPrice.objects.get_or_create(
-                stock=stock,
-                date=date_str,
-                defaults={
-                    'open_price': int(row['시가']),
-                    'high_price': int(row['고가']),
-                    'low_price': int(row['저가']),
-                    'close_price': int(row['종가']),
-                    'volume': int(row['거래량'])
-                }
-            )
-            if created:
-                saved_count += 1
+                # update_or_create를 사용하여 기존 데이터가 있으면 갱신, 없으면 생성
+                # (과거 데이터 수정이나 중복 방지에 더 안전함)
+                _, created = DailyPrice.objects.update_or_create(
+                    stock=stock,
+                    date=date_str,
+                    defaults={
+                        'open_price': int(row['시가']),
+                        'high_price': int(row['고가']),
+                        'low_price': int(row['저가']),
+                        'close_price': int(row['종가']),
+                        'volume': int(row['거래량'])
+                    }
+                )
+                if created:
+                    total_saved_count += 1
 
-        return saved_count
+        return total_saved_count
+
     except Exception as e:
         print(f"Error fetching data for {stock_code}: {e}")
         return 0
