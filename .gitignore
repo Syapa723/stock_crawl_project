@@ -1,0 +1,17 @@
+# .gitignore
+
+# Python & Django
+*.pyc
+__pycache__/
+db.sqlite3
+.DS_Store
+
+# Virtual Environment (uv)
+.venv/
+
+# PyCharm settings
+.idea/
+
+# Environment variables (보안상 중요!)
+.env
+api_keys.py

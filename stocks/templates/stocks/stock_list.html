@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>주식 크롤러 - 종목 리스트</title>
+</head>
+<body>
+    <h1>수집된 종목 리스트</h1>
+    <ul>
+        {% for stock in stocks %}
+            <li><a href="{% url 'stocks:stock_detail' stock.code %}">{{ stock.name }} ({{ stock.code }})</a></li>
+        {% empty %}
+            <li>수집된 종목이 없습니다.</li>
+        {% endfor %}
+    </ul>
+</body>
+</html>

@@ -1,0 +1,90 @@
+{% load humanize %} <!DOCTYPE html>
+<html>
+<head>
+    <title>{{ stock.name }} 상세 시세</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* 차트 크기 조절을 위한 컨테이너 스타일 */
+        .chart-container {
+            width: 80%;
+            margin: 20px auto;
+        }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px;}
+        th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
+        th { background-color: #f4f4f4; }
+    </style>
+</head>
+<body>
+    <h1>{{ stock.name }} ({{ stock.code }}) 주가 차트</h1>
+
+<div style="display: flex; gap: 10px; align-items: center;">
+    <a href="{% url 'stocks:stock_list' %}">목록으로 돌아가기</a>
+
+    <form action="{% url 'stocks:stock_update' stock.code %}" method="post">
+        {% csrf_token %}
+        <button type="submit" style="padding: 5px 10px; cursor: pointer; background-color: #007bff; color: white; border: none; border-radius: 4px;">
+            최신 데이터 업데이트 ↻
+        </button>
+    </form>
+</div>
+
+    <div class="chart-container">
+        <canvas id="myChart"></canvas>
+    </div>
+
+    <hr>
+
+    <h3>일별 시세표</h3>
+    <table>
+        <thead>
+            <tr>
+                <th>날짜</th>
+                <th>종가</th>
+                <th>시가</th>
+                <th>고가</th>
+                <th>저가</th>
+                <th>거래량</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for price in prices reversed %}
+            <tr>
+                <td>{{ price.date }}</td>
+                <td>{{ price.close_price|intcomma }}</td>
+                <td>{{ price.open_price|intcomma }}</td>
+                <td>{{ price.high_price|intcomma }}</td>
+                <td>{{ price.low_price|intcomma }}</td>
+                <td>{{ price.volume|intcomma }}</td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <script>
+        const ctx = document.getElementById('myChart');
+
+        new Chart(ctx, {
+            type: 'line',  // 선 그래프
+            data: {
+                // Django에서 넘겨준 리스트를 자바스크립트 변수로 변환 (|safe 필터 필수)
+                labels: {{ date_list|safe }},
+                datasets: [{
+                    label: '종가 (Close Price)',
+                    data: {{ price_list|safe }},
+                    borderWidth: 2,
+                    borderColor: 'rgb(75, 192, 192)', // 선 색상 (청록색)
+                    tension: 0.1 // 선을 약간 부드럽게
+                }]
+            },
+            options: {
+                responsive: true,
+                scales: {
+                    y: {
+                        beginAtZero: false // 주가는 0부터 시작하지 않으므로 false
+                    }
+                }
+            }
+        });
+    </script>
+</body>
+</html>
