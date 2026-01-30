@@ -100,15 +100,73 @@
             color: var(--text-sub);
             grid-column: 1 / -1; /* 전체 너비 차지 */
         }
+
+        .search-form {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px; /* 헤더 제목과 간격 */
+        }
+
+        .search-input {
+            background-color: #333;
+            border: 1px solid #555;
+            color: var(--text-main);
+            padding: 10px 15px;
+            border-radius: 6px;
+            font-size: 16px;
+            outline: none;
+            width: 300px; /* 검색창 너비 */
+        }
+
+        .search-input:focus {
+            border-color: var(--accent); /* 포커스 시 보라색 테두리 */
+        }
+
+        .search-btn {
+            background-color: #444;
+            color: white;
+            border: 1px solid #555;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: 0.3s;
+        }
+
+        .search-btn:hover {
+            background-color: var(--accent);
+            border-color: var(--accent);
+        }
+
+        /* 초기화 버튼 (X) 스타일 */
+        .reset-link {
+            display: flex;
+            align-items: center;
+            color: var(--text-sub);
+            text-decoration: none;
+            font-size: 14px;
+        }
+        .reset-link:hover { color: #ff8a80; }
     </style>
 </head>
 <body>
     <div class="container">
-        <header>
-            <h1>
-                📈 수집된 종목 리스트
-                <span class="count-badge">{{ stocks|length }}</span>
-            </h1>
+        <header style="display: block;"> <div style="display: flex; justify-content: space-between; align-items: center;">
+                <h1>
+                    📈 수집된 종목 리스트
+                    <span class="count-badge">{{ stocks|length }}</span>
+                </h1>
+            </div>
+
+            <form method="get" class="search-form">
+                <input type="text" name="q" class="search-input"
+                       placeholder="종목명 또는 코드(예: 삼성, 005930)"
+                       value="{{ search_query }}"> <button type="submit" class="search-btn">🔍 검색</button>
+
+                {% if search_query %}
+                    <a href="{% url 'stocks:stock_list' %}" class="reset-link">❌ 검색 초기화</a>
+                {% endif %}
+            </form>
         </header>
 
         <ul class="stock-grid">

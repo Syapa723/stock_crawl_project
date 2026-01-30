@@ -15,3 +15,4 @@ db.sqlite3
 # Environment variables (보안상 중요!)
 .env
 api_keys.py
+

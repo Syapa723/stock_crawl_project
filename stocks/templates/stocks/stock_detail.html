@@ -83,6 +83,45 @@
             border-radius: 10px;
             border: 1px solid var(--border);
         }
+
+        /* [로딩 스피너 오버레이] */
+        #loading-overlay {
+            display: none; /* 평소에는 숨김 */
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.7); /* 배경을 어둡게 */
+            z-index: 9999; /* 모든 것 위에 표시 */
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            backdrop-filter: blur(5px); /* 배경 블러 효과 추가 */
+        }
+
+        /* 뱅글뱅글 도는 원 */
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid rgba(255, 255, 255, 0.3);
+            border-top: 5px solid var(--accent); /* 보라색 */
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+
+        /* 애니메이션 정의 */
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            color: white;
+            font-size: 1.2em;
+            font-weight: bold;
+        }
     </style>
 </head>
 <body>
@@ -111,7 +150,7 @@
                 </div>
             {% else %}
                 <p style="color: var(--text-sub);">최근 30일 주가 데이터를 기반으로 AI가 차트를 분석해드립니다.</p>
-                <form method="post">
+                <form method="post" onsubmit="showLoading()">
                     {% csrf_token %}
                     <button type="submit" name="analyze" value="true" class="btn-ai">
                         ✨ AI 분석 실행하기
@@ -121,6 +160,9 @@
         </div>
 
         <h3>📊 일별 시세 (최근 30일)</h3>
+
+        {% load humanize %}
+
         <table>
             <thead>
                 <tr>
@@ -139,17 +181,24 @@
                     <td style="text-align: center;">{{ price.date|date:"Y-m-d" }}</td>
                     <td style="font-weight: bold; color: #ff8a80;">{{ price.close_price|floatformat:0 }}</td>
                     <td>-</td>
-                    <td>{{ price.open_price }}</td>
-                    <td>{{ price.high_price }}</td>
-                    <td>{{ price.low_price }}</td>
-                    <td>{{ price.volume }}</td>
+                    <td>{{ price.open_price|intcomma }}</td>
+                    <td>{{ price.high_price|intcomma }}</td>
+                    <td>{{ price.low_price|intcomma }}</td>
+                    <td>{{ price.volume|intcomma }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     </div>
 
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div class="loading-text">🤖 AI가 차트를 분석하고 있습니다...</div>
+        <div style="color: #bbb; margin-top: 5px; font-size: 0.9em;">(약 5~10초 소요됩니다)</div>
+    </div>
+
     <script>
+        // 1. 차트 그리기
         const ctx = document.getElementById('myChart').getContext('2d');
         const myChart = new Chart(ctx, {
             type: 'line',
@@ -186,6 +235,11 @@
                 }
             }
         });
+
+        // [추가된 부분] 2. 로딩 화면 보여주는 함수
+        function showLoading() {
+            document.getElementById('loading-overlay').style.display = 'flex';
+        }
     </script>
 </body>
 </html>

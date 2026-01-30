@@ -1,6 +1,7 @@
 # stocks/ai_service.py
-from google import genai
 from django.conf import settings
+from google import genai
+
 from .models import DailyPrice
 
 
@@ -12,7 +13,7 @@ def analyze_stock_with_gemini(stock):
         return f"API 키 설정 오류: {str(e)}"
 
     # 2. 데이터 준비
-    prices = DailyPrice.objects.filter(stock=stock).order_by('-date')[:30]
+    prices = DailyPrice.objects.filter(stock=stock).order_by("-date")[:30]
 
     if not prices:
         return "분석할 데이터가 부족합니다."
@@ -41,9 +42,13 @@ def analyze_stock_with_gemini(stock):
     # 4. AI 호출 (신형 모델명 gemini-2.0-flash 사용 권장)
     try:
         response = client.models.generate_content(
-            model='models/gemini-flash-latest',
-            contents=prompt
+            model="models/gemini-flash-latest", contents=prompt
         )
         return response.text
     except Exception as e:
-        return f"AI 분석 중 오류 발생: {str(e)}"
+        error_msg = str(e)
+
+    if "429" in error_msg:
+        return "⚠️ 현재 사용량이 많아 분석이 지연되고 있습니다. 잠시 후(약 1분 뒤) 다시 시도해주세요."
+
+    return f"AI 분석 오류: {error_msg}"
