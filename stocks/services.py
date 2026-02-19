@@ -1,114 +1,163 @@
-from io import StringIO
+import json
+import os
+from datetime import datetime, timedelta
 
+import FinanceDataReader as fdr  # [✨ 교체] yfinance -> FinanceDataReader
+import numpy as np
 import pandas as pd
 import requests
-from bs4 import BeautifulSoup
+from django.utils import timezone
 
 from .models import DailyPrice, Stock
 
 
+# ---------------------------------------------------------
+# 1. 전 종목 코드 수집 함수 (init_stocks에서 호출)
+# ---------------------------------------------------------
+def update_all_stock_codes():
+    """
+    한국 거래소(KRX)의 전 종목 코드를 가져와 Stock 모델에 저장합니다.
+    """
+    try:
+        print("KRX 종목 리스트 다운로드 중...")
+        # KRX 전체 종목 리스트 가져오기 (코스피, 코스닥, 코넥스 포함)
+        df_krx = fdr.StockListing("KRX")
+
+        if df_krx is None or df_krx.empty:
+            print("❌ KRX 종목 리스트를 가져오지 못했습니다.")
+            return 0, 0  # [✨ 수정] 실패 시 0, 0 반환
+
+        # [옵션] 테스트를 위해 상위 50개만 저장하려면 .head(50) 사용
+        # 실제 운영 시에는 전체를 다 해야 하므로 .head() 제거
+        count = 0
+        for index, row in df_krx.iterrows():
+            try:
+                code = str(row["Code"])
+                name = row["Name"]
+                market = row["Market"]
+
+                # DB에 저장 (이미 있으면 업데이트)
+                Stock.objects.update_or_create(
+                    code=code, defaults={"name": name, "market": market}
+                )
+                count += 1
+            except Exception as e:
+                print(f"Error saving {row['Name']}: {e}")
+
+        print(f"✅ 총 {count}개 종목 코드 업데이트 완료")
+
+        return count, len(df_krx)
+
+    except Exception as e:
+        print(f"❌ 종목 코드 저장 실패: {e}")
+        return 0, 0
+
+
+# ---------------------------------------------------------
+# 2. 일별 시세 수집 함수 (init_stocks 및 스케줄러에서 호출)
+# ---------------------------------------------------------
 def fetch_and_save_stock_data(stock_code):
     """
-    네이버 증권에서 특정 종목의 일별 시세를 가져와 DB에 저장하는 서비스 함수
-    (최근 4페이지, 약 40일치 데이터 수집)
+    특정 종목의 최근 일봉 데이터를 가져와 DailyPrice에 저장합니다.
     """
-    headers = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"}
-
     try:
-        # 1. 종목 객체 가져오기 (없으면 생성하지만, 보통 init_stocks로 생성됨)
-        stock, created = Stock.objects.get_or_create(code=stock_code)
+        stock = Stock.objects.get(code=stock_code)
 
-        # 2. 최신 종목명 업데이트 (메인 페이지 접속)
-        #    이 부분은 생략해도 되지만, 종목명이 바뀌는 경우를 대비해 유지합니다.
-        main_url = f"https://finance.naver.com/item/main.nhn?code={stock_code}"
-        main_response = requests.get(main_url, headers=headers)
-        if main_response.status_code == 200:
-            soup = BeautifulSoup(main_response.text, "html.parser")
-            name_tag = soup.select_one(".wrap_company h2 a")
-            if name_tag:
-                stock_name = name_tag.text
-                if stock.name != stock_name:
-                    stock.name = stock_name
-                    stock.save()
+        # 최근 60일치 데이터 가져오기 (W패턴 분석용)
+        # FinanceDataReader는 날짜만 넣으면 알아서 가져옵니다.
+        start_date = datetime.now() - timedelta(days=100)
+        df = fdr.DataReader(stock_code, start_date)
 
-        # 3. 페이지 순회하며 데이터 수집 (1페이지 ~ 4페이지 -> 약 40일치)
-        total_saved_count = 0
+        if df.empty:
+            return False
 
-        for page in range(1, 5):
-            url = f"https://finance.naver.com/item/sise_day.nhn?code={stock_code}&page={page}"
-            response = requests.get(url, headers=headers)
-            response.raise_for_status()
+        # 데이터 저장
+        for date, row in df.iterrows():
+            # 날짜 객체 변환 (Timestamp -> date)
+            date_obj = date.date()
 
-            # pandas로 테이블 읽기
-            df_list = pd.read_html(StringIO(response.text), encoding="cp949")
-            if not df_list:
+            # 이미 저장된 날짜면 건너뛰기 (중복 방지)
+            if DailyPrice.objects.filter(stock=stock, date=date_obj).exists():
                 continue
 
-            # 결측치 제거
-            df = df_list[0].dropna()
-
-            # 데이터프레임 순회하며 DB 저장
-            for _, row in df.iterrows():
-                # 날짜 형식 처리 (2024.01.30 -> 2024-01-
-                date_str = row["날짜"].replace(".", "-")
-
-                # update_or_create를 사용하여 기존 데이터가 있으면 갱신, 없으면 생성
-                # (과거 데이터 수정이나 중복 방지에 더 안전함)
-                _, created = DailyPrice.objects.update_or_create(
-                    stock=stock,
-                    date=date_str,
-                    defaults={
-                        "open_price": int(row["시가"]),
-                        "high_price": int(row["고가"]),
-                        "low_price": int(row["저가"]),
-                        "close_price": int(row["종가"]),
-                        "volume": int(row["거래량"]),
-                    },
-                )
-                if created:
-                    total_saved_count += 1
-
-        return total_saved_count
+            DailyPrice.objects.create(
+                stock=stock,
+                date=date_obj,
+                open_price=int(row["Open"]),
+                high_price=int(row["High"]),
+                low_price=int(row["Low"]),
+                close_price=int(row["Close"]),
+                volume=int(row["Volume"] if "Volume" in row else 0),
+            )
+        return True
 
     except Exception as e:
         print(f"Error fetching data for {stock_code}: {e}")
-        return 0
+        return False
 
 
-def update_all_stock_codes():
+# ---------------------------------------------------------
+# 3. W곡선(쌍바닥) 패턴 분석 함수 (기존 로직 유지)
+# ---------------------------------------------------------
+def analyze_w_pattern(stock_code):
     """
-    한국거래소(KRX)에서 상장된 모든 종목(KOSPI, KOSDAQ) 정보를 가져와 Stock 모델에 저장합니다.
+    최근 60거래일 데이터를 분석하여 W곡선 패턴을 감지하고 DB에 저장합니다.
     """
-    # 1. KRX 상장법인 목록 다운로드 URL
-    stock_code_url = (
-        "http://kind.krx.co.kr/corpgeneral/corpList.do?method=download&searchType=13"
-    )
-
     try:
-        # 2. pandas로 HTML(엑셀 형식) 읽기
-        df = pd.read_html(stock_code_url, header=0, encoding="cp949")[0]
+        stock = Stock.objects.get(code=stock_code)
+        # 최근 60일치 데이터를 날짜순으로 가져옴
+        prices = list(DailyPrice.objects.filter(stock=stock).order_by("date"))
 
-        # 3. 데이터 전처리
-        # 종목코드가 숫자(5930)로 들어오므로 6자리 문자열(005930)로 변환
-        df["종목코드"] = df["종목코드"].astype(str).str.zfill(6)
+        if len(prices) < 40:  # 최소 분석 데이터 부족
+            return False
 
-        # 필요한 컬럼만 선택 (회사명, 종목코드)
-        df = df[["회사명", "종목코드"]]
+        close_prices = np.array([p.close_price for p in prices])
 
-        # 4. DB에 저장 (update_or_create 사용)
-        total_count = len(df)
-        saved_count = 0
+        # [Step 1] 1차 바닥(Low 1) 찾기 (전체 구간의 앞쪽 70% 중 최저점)
+        search_range = int(len(close_prices) * 0.7)
+        low1_idx = np.argmin(close_prices[:search_range])
+        low1_price = close_prices[low1_idx]
 
-        for _, row in df.iterrows():
-            name = row["회사명"]
-            code = row["종목코드"]
+        # [Step 2] 넥라인(Peak) 찾기 (1차 바닥 이후 최고점)
+        after_low1 = close_prices[low1_idx:]
+        if len(after_low1) < 2:
+            return False
 
-            # 종목이 이미 있으면 이름 업데이트, 없으면 생성
-            Stock.objects.update_or_create(code=code, defaults={"name": name})
-            saved_count += 1
+        peak_idx = low1_idx + np.argmax(after_low1)
+        peak_price = close_prices[peak_idx]
 
-        return saved_count, total_count
+        # [Step 3] 2차 바닥(Low 2) 찾기 (넥라인 이후 최저점)
+        after_peak = close_prices[peak_idx:]
+        if len(after_peak) < 5:
+            return False
+
+        low2_idx = peak_idx + np.argmin(after_peak)
+        low2_price = close_prices[low2_idx]
+
+        # --- 패턴 검증 로직 ---
+        # 1. 두 바닥의 가격 차이가 5% 이내 (쌍바닥 조건 완화)
+        price_diff_ratio = abs(low1_price - low2_price) / low1_price
+
+        # 2. 넥라인이 바닥 대비 3% 이상 반등했는지 확인
+        rebound_ratio = (peak_price - low1_price) / low1_price
+
+        # 3. 현재가가 2차 바닥보다 높고 고개를 드는 중인지
+        current_price = close_prices[-1]
+        is_rebounding = current_price > low2_price
+
+        # [결과 반영]
+        if price_diff_ratio < 0.05 and rebound_ratio > 0.03 and is_rebounding:
+            stock.is_w_pattern = True
+            # 점수 계산: 바닥 차이가 적을수록, 반등폭이 클수록 높은 점수
+            score = int((1 - price_diff_ratio) * 50 + (rebound_ratio * 100))
+            stock.w_score = min(score, 100)  # 100점 만점 제한
+        else:
+            stock.is_w_pattern = False
+            stock.w_score = 0
+
+        stock.save()
+        return stock.is_w_pattern
 
     except Exception as e:
-        print(f"전체 종목 가져오기 실패: {e}")
-        return 0, 0
+        print(f"W-Pattern analysis failed for {stock_code}: {e}")
+        return False

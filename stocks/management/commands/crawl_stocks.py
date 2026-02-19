@@ -1,3 +1,4 @@
+import FinanceDataReader as fdr  # 새로 설치한 라이브러리
 from django.core.management.base import BaseCommand
 
 from stocks.models import Stock
@@ -5,54 +6,52 @@ from stocks.services import fetch_and_save_stock_data
 
 
 class Command(BaseCommand):
-    help = "여러 종목의 주가 데이터를 크롤링합니다."
+    help = "FinanceDataReader를 이용해 KRX 전 종목을 가져오고 시세를 수집합니다."
 
-    def add_arguments(self, parser):
-        # nargs='*' : 인자를 0개 이상 받을 수 있음을 의미합니다.
-        # 인자가 없으면 빈 리스트 []가 들어옵니다.
-        parser.add_argument(
-            "codes",
-            nargs="*",
-            type=str,
-            help="종목코드들 (공백으로 구분, 비워두면 모든 종목 업데이트)",
-        )
+    def handle(self, *args, **kwargs):
+        self.stdout.write("📥 KRX 종목 리스트 다운로드 중 (via FinanceDataReader)...")
 
-    def handle(self, *args, **options):
-        codes = options["codes"]
+        try:
+            # KRX 전체 리스트 가져오기 (KOSPI, KOSDAQ, KONEX 포함)
+            # 컬럼: Code, Name, Market, Sector, Industry ...
+            df_krx = fdr.StockListing("KRX")
 
-        # 1. 인자가 입력되지 않았다면 -> DB에 있는 '모든 종목'을 가져옵니다.
-        if not codes:
-            self.stdout.write(
-                "종목 코드가 입력되지 않아, 저장된 모든 종목을 업데이트합니다."
-            )
-            # 저장된 모든 Stock 객체에서 코드만 리스트로 추출
-            codes = [s.code for s in Stock.objects.all()]
+            # 우선 KOSPI와 KOSDAQ만 필터링 (KONEX 제외)
+            df = df_krx[df_krx["Market"].isin(["KOSPI", "KOSDAQ"])]
 
-            if not codes:
-                self.stdout.write(
-                    self.style.WARNING(
-                        "저장된 종목이 없습니다. 코드를 입력해서 실행해주세요."
-                    )
+            total = len(df)
+            self.stdout.write(f"✅ 총 {total}개 종목 발견 (KOSPI/KOSDAQ).")
+
+            count = 0
+            for index, row in df.iterrows():
+                code = str(row["Code"])  # 005930
+                name = row["Name"]  # 삼성전자
+                market = row["Market"]  # KOSPI or KOSDAQ
+
+                # DB에 저장 (시장 구분까지 확실하게!)
+                stock, created = Stock.objects.update_or_create(
+                    code=code,
+                    defaults={
+                        "name": name,
+                        "market": market,  # 이제 여기서 정확히 저장됩니다!
+                    },
                 )
-                return
 
-        # 2. 리스트에 있는 모든 코드를 순회하며 크롤링 실행
-        total = len(codes)
-        self.stdout.write(f"총 {total}개의 종목 작업을 시작합니다...")
+                # 진행 상황 표시 (20개마다 로그 찍기)
+                if count % 20 == 0:
+                    self.stdout.write(
+                        f"[{count + 1}/{total}] {name}({market}) 저장 및 시세 수집 중..."
+                    )
 
-        success_count = 0
-        for index, code in enumerate(codes, 1):
-            self.stdout.write(f"[{index}/{total}] {code} 크롤링 중...", ending="")
+                # 시세 수집 실행 (services.py)
+                # 이제 market이 확실하므로 services.py가 헤매지 않습니다.
+                fetch_and_save_stock_data(code)
 
-            # 서비스 함수 호출
-            result = fetch_and_save_stock_data(code)
+                count += 1
 
-            if result > 0:
-                self.stdout.write(self.style.SUCCESS(" 완료"))
-                success_count += 1
-            else:
-                self.stdout.write(self.style.WARNING(" 실패/데이터없음"))
+            self.stdout.write(
+                self.style.SUCCESS(f"🎉 모든 작업 완료! 총 {count}개 종목 처리됨.")
+            )
 
-        self.stdout.write(
-            self.style.SUCCESS(f"\n모든 작업 종료! ({success_count}/{total} 성공)")
-        )
+        except Exception as e:
+            self.stdout.write(self.style.ERROR(f"❌ 실패: {e}"))
