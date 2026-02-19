@@ -11,6 +11,7 @@
             --text-sub: #a0a0a0;       /* 보조 텍스트 */
             --accent: #bb86fc;         /* 강조색 (보라) */
             --hover-bg: #383838;       /* 마우스 올렸을 때 */
+            --w-red: #ff4757;          /* W-패턴 강조색 (빨강) */
         }
 
         body {
@@ -21,20 +22,22 @@
             padding: 20px;
         }
 
-        /* 중앙 정렬 컨테이너 */
         .container {
             max-width: 1200px;
             margin: 0 auto;
         }
 
-        /* 헤더 스타일 */
         header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            display: block;
             margin-bottom: 30px;
             border-bottom: 1px solid #444;
             padding-bottom: 20px;
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
         }
 
         h1 { margin: 0; font-size: 24px; }
@@ -50,7 +53,26 @@
             margin-left: 10px;
         }
 
-        /* 그리드 레이아웃 (반응형 카드) */
+        /* [✨ 추가된 스타일] W-곡선 대시보드 버튼 */
+        .btn-w-pattern {
+            display: inline-block;
+            background: linear-gradient(45deg, var(--w-red), #ff6b81);
+            color: white;
+            text-decoration: none;
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: bold;
+            font-size: 15px;
+            box-shadow: 0 4px 15px rgba(255, 71, 87, 0.3);
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn-w-pattern:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(255, 71, 87, 0.5);
+            color: white;
+        }
+
         .stock-grid {
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
@@ -59,7 +81,6 @@
             list-style: none;
         }
 
-        /* 개별 카드 스타일 */
         .stock-card {
             background-color: var(--card-bg);
             border-radius: 8px;
@@ -93,18 +114,17 @@
             color: var(--text-sub);
         }
 
-        /* 데이터 없음 메시지 */
         .empty-msg {
             text-align: center;
             padding: 50px;
             color: var(--text-sub);
-            grid-column: 1 / -1; /* 전체 너비 차지 */
+            grid-column: 1 / -1;
         }
 
         .search-form {
             display: flex;
             gap: 10px;
-            margin-top: 15px; /* 헤더 제목과 간격 */
+            margin-top: 20px;
         }
 
         .search-input {
@@ -115,11 +135,11 @@
             border-radius: 6px;
             font-size: 16px;
             outline: none;
-            width: 300px; /* 검색창 너비 */
+            width: 300px;
         }
 
         .search-input:focus {
-            border-color: var(--accent); /* 포커스 시 보라색 테두리 */
+            border-color: var(--accent);
         }
 
         .search-btn {
@@ -138,7 +158,6 @@
             border-color: var(--accent);
         }
 
-        /* 초기화 버튼 (X) 스타일 */
         .reset-link {
             display: flex;
             align-items: center;
@@ -151,17 +170,23 @@
 </head>
 <body>
     <div class="container">
-        <header style="display: block;"> <div style="display: flex; justify-content: space-between; align-items: center;">
+        <header>
+            <div class="header-top">
                 <h1>
                     📈 수집된 종목 리스트
                     <span class="count-badge">{{ stocks|length }}</span>
                 </h1>
+
+                <a href="{% url 'stocks:w_dashboard' %}" class="btn-w-pattern">
+                    🔥 W-곡선 유망주 포착 가기
+                </a>
             </div>
 
             <form method="get" class="search-form">
                 <input type="text" name="q" class="search-input"
                        placeholder="종목명 또는 코드(예: 삼성, 005930)"
-                       value="{{ search_query }}"> <button type="submit" class="search-btn">🔍 검색</button>
+                       value="{{ search_query }}">
+                <button type="submit" class="search-btn">🔍 검색</button>
 
                 {% if search_query %}
                     <a href="{% url 'stocks:stock_list' %}" class="reset-link">❌ 검색 초기화</a>

@@ -1,0 +1,56 @@
+services:
+  # 1. Django 웹 서버 (Gunicorn 실행)
+  web:
+    build: .
+    container_name: stock_web
+    # Gunicorn 실행 (config 폴더 내의 wsgi.py를 바라봅니다)
+    command: tail -f /dev/null
+    volumes:
+      - .:/app          # 내 코드를 컨테이너와 동기화
+      - /app/.venv      # 중요: 컨테이너 내부의 가상환경(리눅스용)을 보호
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env            # .env의 환경 변수(DB 정보 등)를 주입
+    depends_on:
+      db:
+        condition: service_healthy # DB가 단순히 켜진 게 아니라 '준비'될 때까지 대기
+    restart: always
+
+  # 2. PostgreSQL 데이터베이스
+  db:
+    image: postgres:15
+    container_name: stock_db
+    volumes:
+      - postgres_data:/var/lib/postgresql/data # 데이터 영구 저장
+    environment:
+      - POSTGRES_DB=stock_db
+      - POSTGRES_USER=syapa723
+      - POSTGRES_PASSWORD=418770
+    healthcheck: # DB가 실제로 요청을 받을 준비가 됐는지 체크하는 로직
+      test: ["CMD-SHELL", "pg_isready -U syapa723 -d stock_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    ports:
+      - "5432:5432"
+    restart: always
+
+  # 3. 스케쥴러
+  stock_scheduler:
+    build: .
+    container_name: stock_scheduler
+    # 웹 서버 대신 스케줄러 명령어를 실행합니다.
+    command: uv run python manage.py run_scheduler
+    volumes:
+      - .:/app
+      - /app/.venv
+    env_file:
+      - .env
+    depends_on:
+      - db
+      - web  # 웹 서버가 켜진 뒤에 실행
+    restart: always
+# 데이터를 저장할 공간(볼륨) 정의
+volumes:
+  postgres_data:

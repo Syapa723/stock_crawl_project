@@ -7,34 +7,6 @@ from .models import DailyPrice, Stock
 from .services import fetch_and_save_stock_data
 
 
-def stock_detail(request, stock_code):
-    stock = get_object_or_404(Stock, code=stock_code)
-    prices = DailyPrice.objects.filter(stock=stock).order_by("date")
-
-    # 차트용 데이터
-    date_list = [p.date.strftime("%Y-%m-%d") for p in prices]
-    price_list = [p.close_price for p in prices]
-
-    # [추가] AI 분석 결과 변수 초기화
-    ai_result = None
-
-    # [추가] POST 요청으로 'analyze' 키가 들어오면 AI 분석 실행
-    if request.method == "POST" and "analyze" in request.POST:
-        ai_result = analyze_stock_with_gemini(stock)
-
-    return render(
-        request,
-        "stocks/stock_detail.html",
-        {
-            "stock": stock,
-            "prices": prices,
-            "date_list": date_list,
-            "price_list": price_list,
-            "ai_result": ai_result,  # [추가] 템플릿으로 결과 전달
-        },
-    )
-
-
 def stock_list(request):
     # 1. 사용자가 입력한 검색어 가져오기 (없으면 빈 문자열)
     query = request.GET.get("q", "")
@@ -101,3 +73,45 @@ def stock_update(request, stock_code):
 
     # 2. 작업이 끝나면 다시 상세 페이지로 이동
     return redirect("stocks:stock_detail", stock_code=stock_code)
+
+
+def index(request):
+    """
+    메인 페이지를 보여줍니다.
+    예전에 만든 HTML 파일 이름이 'index.html'이라고 가정합니다.
+    """
+    return redirect("stocks:w_dashboard")
+
+
+def w_pattern_dashboard(request):
+    """
+    W패턴(쌍바닥)이 감지된 종목들만 모아서 보여주는 대시보드입니다.
+    """
+    # 1. W패턴으로 판명된 종목들만 가져오고, 점수 높은 순으로 정렬
+    w_stocks = Stock.objects.filter(is_w_pattern=True).order_by("-w_score")
+
+    # 2. 검색 기능 (대시보드 내에서도 검색 가능하게)
+    query = request.GET.get("q", "")
+    if query:
+        w_stocks = w_stocks.filter(Q(name__icontains=query) | Q(code__icontains=query))
+
+    # [✨ 핵심 추가] 각 종목마다 최신 가격(DailyPrice)을 찾아서 넣어줍니다.
+    for stock in w_stocks:
+        # 해당 종목의 시세 데이터 중 가장 최신 날짜(-date)의 데이터를 하나 가져옵니다.
+        latest = DailyPrice.objects.filter(stock=stock).order_by("-date").first()
+        if latest:
+            stock.current_price = (
+                latest.close_price
+            )  # 최신 종가를 'current_price'라는 이름으로 붙여줌
+        else:
+            stock.current_price = 0  # 시세 데이터가 없으면 0원으로 표시
+
+    return render(
+        request,
+        "stocks/w_dashboard.html",
+        {
+            "w_stocks": w_stocks,
+            "search_query": query,
+            "total_count": w_stocks.count(),
+        },
+    )
